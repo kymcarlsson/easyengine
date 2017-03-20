@@ -1,6 +1,8 @@
 #[EasyEngine](https://easyengine.io/)
-[![Travis Build Status](https://travis-ci.org/EasyEngine/easyengine.svg "Travis Build Status")] (https://travis-ci.org/EasyEngine/easyengine)
-[Join EasyEngine Slack Channel](https://easyengine.io/slack/)
+
+[![Travis Build Status](https://travis-ci.org/EasyEngine/easyengine.svg)](https://travis-ci.org/EasyEngine/easyengine) [![Join EasyEngine Slack Channel](http://slack.easyengine.io/badge.svg)](http://slack.easyengine.io/)
+
+**Update:** [We are working on next major release (v4) which will be in PHP and based on WP-CLI](https://easyengine.io/blog/easyengine-v4-development-begins/).
 
 <img src="https://d3qt5vpr7p9rgn.cloudfront.net/wp-content/uploads/2013/08/easy-engine-logo-2-RS1-240x184.png" alt="EasyEngine Logo" align="right" />
 
@@ -8,7 +10,7 @@ EasyEngine (ee) is a python tool, which makes it easy to manage your wordpress s
 
 **EasyEngine currently supports:**
 
-- Ubuntu 12.04 & 14.04
+- Ubuntu 12.04 & 14.04 & 16.04
 - Debian 7 & 8
 
 **Port Requirements:**
@@ -113,7 +115,9 @@ ee site create example.com --php --pagespeed     # create example.com php site w
 
 ## Donations
 
-[![Donate](https://cloud.githubusercontent.com/assets/4115/5297691/c7b50292-7bd7-11e4-987b-2dc21069e756.png)]  (https://rtcamp.com/donate/?project=easyengine)
+[![PayPal-Donate](https://cloud.githubusercontent.com/assets/4115/5297691/c7b50292-7bd7-11e4-987b-2dc21069e756.png)]  (https://rtcamp.com/donate/?project=easyengine)
+
+[![BitCoin-Donate](https://bitpay.com/img/donate-button.svg)](https://bitpay.com/417008/donate)
 
 ---
 

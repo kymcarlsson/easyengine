@@ -27,5 +27,5 @@ location ~ ^/wp-content/cache/minify/(.+\.(css|js))$ {
 location ~ \.php$ {
   try_files $uri =404;
   include fastcgi_params;
-  fastcgi_pass hhvm;
+  fastcgi_pass php7;
 }

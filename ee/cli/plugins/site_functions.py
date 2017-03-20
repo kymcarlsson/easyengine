@@ -54,6 +54,10 @@ def check_domain_exists(self, domain):
 
 def setupdomain(self, data):
 
+    #for debug purpose
+   # for key, value in data.items() :
+   #     print (key, value)
+
     ee_domain_name = data['site_name']
     ee_site_webroot = data['webroot'] if 'webroot' in data.keys() else ''
 
@@ -68,9 +72,12 @@ def setupdomain(self, data):
         ee_site_nginx_conf = open('/etc/nginx/sites-available/{0}'
                                   .format(ee_domain_name), encoding='utf-8',
                                   mode='w')
-
-        self.app.render((data), 'virtualconf.mustache',
-                        out=ee_site_nginx_conf)
+        if not data['php7']:
+            self.app.render((data), 'virtualconf.mustache',
+                          out=ee_site_nginx_conf)
+        else:
+            self.app.render((data), 'virtualconf-php7.mustache',
+                          out=ee_site_nginx_conf)
         ee_site_nginx_conf.close()
     except IOError as e:
         Log.debug(self, "{0}".format(e))
@@ -620,7 +627,7 @@ def sitebackup(self, data):
                          .format(data['site_name']), backup_path)
 
     if data['currsitetype'] in ['html', 'php', 'proxy', 'mysql']:
-        if (data['pagespeed'] is True or data['old_pagespeed_status'] is True) and not data['wp']:
+        if data['php7'] is True and not data['wp']:
             Log.info(self, "Backing up Webroot \t\t", end='')
             EEFileUtils.copyfiles(self, ee_site_webroot + '/htdocs', backup_path + '/htdocs')
             Log.info(self, "[" + Log.ENDC + "Done" + Log.OKBLUE + "]")
@@ -660,7 +667,7 @@ def sitebackup(self, data):
         Log.info(self, "[" + Log.ENDC + "Done" + Log.OKBLUE + "]")
         # move wp-config.php/ee-config.php to backup
         if data['currsitetype'] in ['mysql', 'proxy']:
-            if (data['pagespeed'] is True or data['old_pagespeed_status'] is True) and not data['wp']:
+            if data['php7'] is True and not data['wp']:
                 EEFileUtils.copyfile(self, configfiles[0], backup_path)
             else:
                 EEFileUtils.mvfile(self, configfiles[0], backup_path)
@@ -674,7 +681,7 @@ def site_package_check(self, stype):
     stack = EEStackController()
     stack.app = self.app
     if stype in ['html', 'proxy', 'php', 'mysql', 'wp', 'wpsubdir',
-                 'wpsubdomain']:
+                 'wpsubdomain', 'php7']:
         Log.debug(self, "Setting apt_packages variable for Nginx")
 
         # Check if server has nginx-custom package
@@ -687,7 +694,13 @@ def site_package_check(self, stype):
                 apt = ["nginx-plus"] + EEVariables.ee_nginx
                 #apt_packages = apt_packages + EEVariables.ee_nginx
                 stack.post_pref(apt, packages)
-
+            elif EEAptGet.is_installed(self, 'nginx'):
+                Log.info(self, "EasyEngine detected a previously installed Nginx package. "
+                                "It may or may not have required modules. "
+                                "\nIf you need help, please create an issue at https://github.com/EasyEngine/easyengine/issues/ \n")
+                apt = ["nginx"] + EEVariables.ee_nginx
+                #apt_packages = apt_packages + EEVariables.ee_nginx
+                stack.post_pref(apt, packages)
             else:
                 apt_packages = apt_packages + EEVariables.ee_nginx
         else:
@@ -699,10 +712,38 @@ def site_package_check(self, stype):
                     ee_nginx.write('fastcgi_param \tSCRIPT_FILENAME '
                                    '\t$request_filename;\n')
 
-    if stype in ['php', 'mysql', 'wp', 'wpsubdir', 'wpsubdomain']:
+    if self.app.pargs.php and self.app.pargs.php7:
+        Log.error(self,"INVALID OPTION: PHP 7.0 provided with PHP 5.0")
+
+    if not self.app.pargs.php7 and stype in ['php', 'mysql', 'wp', 'wpsubdir', 'wpsubdomain']:
         Log.debug(self, "Setting apt_packages variable for PHP")
-        if not EEAptGet.is_installed(self, 'php5-fpm'):
-            apt_packages = apt_packages + EEVariables.ee_php
+        if (EEVariables.ee_platform_codename == 'trusty' or EEVariables.ee_platform_codename == 'xenial'):
+            if not EEAptGet.is_installed(self, 'php5.6-fpm'):
+                apt_packages = apt_packages + EEVariables.ee_php5_6 + EEVariables.ee_php_extra
+        else:
+            if not EEAptGet.is_installed(self, 'php5-fpm'):
+                apt_packages = apt_packages + EEVariables.ee_php
+
+    if self.app.pargs.php7 and stype in [ 'mysql', 'wp', 'wpsubdir', 'wpsubdomain']:
+        if (EEVariables.ee_platform_codename == 'trusty' or EEVariables.ee_platform_codename == 'xenial'):
+            Log.debug(self, "Setting apt_packages variable for PHP 5.6")
+            if not EEAptGet.is_installed(self, 'php5.6-fpm'):
+                apt_packages = apt_packages + EEVariables.ee_php5_6
+            Log.debug(self, "Setting apt_packages variable for PHP 7.0")
+            if not EEAptGet.is_installed(self, 'php7.0-fpm'):
+                apt_packages = apt_packages + EEVariables.ee_php7_0 + EEVariables.ee_php_extra
+        else:
+            if EEVariables.ee_platform_codename == 'wheezy':
+                Log.warn(self, "PHP 7.0 not available for your system.")
+                Log.info(self,"Creating site with PHP 5.6")
+                if not EEAptGet.is_installed(self, 'php5-fpm'):
+                    Log.info(self, "Setting apt_packages variable for PHP")
+                    Log.debug(self, "Setting apt_packages variable for PHP")
+                    apt_packages = apt_packages + EEVariables.ee_php
+            else:
+                Log.debug(self, "Setting apt_packages variable for PHP 7.0")
+                if not EEAptGet.is_installed(self, 'php7.0-fpm'):
+                    apt_packages = apt_packages + EEVariables.ee_php7_0
 
     if stype in ['mysql', 'wp', 'wpsubdir', 'wpsubdomain']:
         Log.debug(self, "Setting apt_packages variable for MySQL")
@@ -821,21 +862,98 @@ def site_package_check(self, stype):
                     hhvm_file.write("upstream hhvm {\nserver 127.0.0.1:8000;\n"
                                     "server 127.0.0.1:9000 backup;\n}\n")
 
-    # Check if Nginx is allready installed and Pagespeed config there or not
-    # If not then copy pagespeed config
-    if self.app.pargs.pagespeed:
-        if (os.path.isfile('/etc/nginx/nginx.conf') and
-           (not os.path.isfile('/etc/nginx/conf.d/pagespeed.conf'))):
-            # Pagespeed configuration
+    if self.app.pargs.php7:
+        if (EEVariables.ee_platform_codename == 'wheezy' or EEVariables.ee_platform_codename == 'precise'):
+            Log.error(self,"PHP 7.0 is not supported in your Platform")
+
+        Log.debug(self, "Setting apt_packages variable for PHP 7.0")
+        if not EEAptGet.is_installed(self, 'php7.0-fpm'):
+            apt_packages = apt_packages + EEVariables.ee_php7_0 + EEVariables.ee_php_extra
+
+        if os.path.isdir("/etc/nginx/common") and (not
+           os.path.isfile("/etc/nginx/common/php7.conf")):
             data = dict()
-            Log.debug(self, 'Writting the Pagespeed Global '
-                      'configuration to file /etc/nginx/conf.d/'
-                      'pagespeed.conf')
-            ee_nginx = open('/etc/nginx/conf.d/pagespeed.conf',
+            Log.debug(self, 'Writting the nginx configuration to '
+                              'file /etc/nginx/common/locations-php7.conf')
+            ee_nginx = open('/etc/nginx/common/locations-php7.conf',
+                                    encoding='utf-8', mode='w')
+            self.app.render((data), 'locations-php7.mustache',
+                                    out=ee_nginx)
+            ee_nginx.close()
+
+            Log.debug(self, 'Writting the nginx configuration to '
+                      'file /etc/nginx/common/php7.conf')
+            ee_nginx = open('/etc/nginx/common/php7.conf',
                             encoding='utf-8', mode='w')
-            self.app.render((data), 'pagespeed-global.mustache',
+            self.app.render((data), 'php7.mustache',
                             out=ee_nginx)
             ee_nginx.close()
+
+            Log.debug(self, 'Writting the nginx configuration to '
+                      'file /etc/nginx/common/w3tc-php7.conf')
+            ee_nginx = open('/etc/nginx/common/w3tc-php7.conf',
+                            encoding='utf-8', mode='w')
+            self.app.render((data), 'w3tc-php7.mustache', out=ee_nginx)
+            ee_nginx.close()
+
+            Log.debug(self, 'Writting the nginx configuration to '
+                                'file /etc/nginx/common/wpcommon-php7.conf')
+            ee_nginx = open('/etc/nginx/common/wpcommon-php7.conf',
+                                    encoding='utf-8', mode='w')
+            self.app.render((data), 'wpcommon-php7.mustache',
+                                    out=ee_nginx)
+            ee_nginx.close()
+
+            Log.debug(self, 'Writting the nginx configuration to '
+                      'file /etc/nginx/common/wpfc-php7.conf')
+            ee_nginx = open('/etc/nginx/common/wpfc-php7.conf',
+                            encoding='utf-8', mode='w')
+            self.app.render((data), 'wpfc-php7.mustache',
+                            out=ee_nginx)
+            ee_nginx.close()
+
+            Log.debug(self, 'Writting the nginx configuration to '
+                      'file /etc/nginx/common/wpsc-php7.conf')
+            ee_nginx = open('/etc/nginx/common/wpsc-php7.conf',
+                            encoding='utf-8', mode='w')
+            self.app.render((data), 'wpsc-php7.mustache',
+                            out=ee_nginx)
+            ee_nginx.close()
+
+        if os.path.isfile("/etc/nginx/nginx.conf") and (not
+            os.path.isfile("/etc/nginx/common/redis-php7.conf")):
+            data = dict()
+            Log.debug(self, 'Writting the nginx configuration to '
+                     'file /etc/nginx/common/redis-php7.conf')
+            ee_nginx = open('/etc/nginx/common/redis-php7.conf',
+                            encoding='utf-8', mode='w')
+            self.app.render((data), 'redis-php7.mustache',
+                            out=ee_nginx)
+            ee_nginx.close()
+
+        if os.path.isfile("/etc/nginx/conf.d/upstream.conf"):
+            if not EEFileUtils.grep(self, "/etc/nginx/conf.d/upstream.conf",
+                                          "php7"):
+                with open("/etc/nginx/conf.d/upstream.conf", "a") as php_file:
+                    php_file.write("upstream php7 {\nserver 127.0.0.1:9070;\n}\n"
+                                    "upstream debug7 {\nserver 127.0.0.1:9170;\n}\n")
+
+
+    # Check if Nginx is allready installed and Pagespeed config there or not
+    # If not then copy pagespeed config
+#    if self.app.pargs.pagespeed:
+#        if (os.path.isfile('/etc/nginx/nginx.conf') and
+#           (not os.path.isfile('/etc/nginx/conf.d/pagespeed.conf'))):
+            # Pagespeed configuration
+#            data = dict()
+#            Log.debug(self, 'Writting the Pagespeed Global '
+#                      'configuration to file /etc/nginx/conf.d/'
+#                      'pagespeed.conf')
+#            ee_nginx = open('/etc/nginx/conf.d/pagespeed.conf',
+#                            encoding='utf-8', mode='w')
+#            self.app.render((data), 'pagespeed-global.mustache',
+#                            out=ee_nginx)
+#            ee_nginx.close()
 
     return(stack.install(apt_packages=apt_packages, packages=packages,
                          disp_msg=False))
@@ -989,7 +1107,7 @@ def detSitePar(opts):
     cachelist = list()
     for key, val in opts.items():
         if val and key in ['html', 'php', 'mysql', 'wp',
-                           'wpsubdir', 'wpsubdomain']:
+                           'wpsubdir', 'wpsubdomain','php7']:
             typelist.append(key)
         elif val and key in ['wpfc', 'wpsc', 'w3tc', 'wpredis']:
             cachelist.append(key)
@@ -1003,7 +1121,19 @@ def detSitePar(opts):
                 cachetype = 'basic'
             else:
                 cachetype = cachelist[0]
+        elif False not in [x in ('php7','mysql','html') for x in typelist]:
+            sitetype = 'mysql'
+            if not cachelist:
+                cachetype = 'basic'
+            else:
+                cachetype = cachelist[0]
         elif False not in [x in ('php','mysql') for x in typelist]:
+            sitetype = 'mysql'
+            if not cachelist:
+                cachetype = 'basic'
+            else:
+                cachetype = cachelist[0]
+        elif False not in [x in ('php7','mysql') for x in typelist]:
             sitetype = 'mysql'
             if not cachelist:
                 cachetype = 'basic'
@@ -1021,6 +1151,12 @@ def detSitePar(opts):
                 cachetype = 'basic'
             else:
                 cachetype = cachelist[0]
+        elif False not in [x in ('php7','html') for x in typelist]:
+            sitetype = 'php7'
+            if not cachelist:
+                cachetype = 'basic'
+            else:
+                cachetype = cachelist[0]
         elif False not in [x in ('wp','wpsubdir') for x in typelist]:
             sitetype = 'wpsubdir'
             if not cachelist:
@@ -1033,14 +1169,31 @@ def detSitePar(opts):
                 cachetype = 'basic'
             else:
                 cachetype = cachelist[0]
+        elif False not in [x in ('wp','php7') for x in typelist]:
+            sitetype = 'wp'
+            if not cachelist:
+                cachetype = 'basic'
+            else:
+                cachetype = cachelist[0]
+        elif False not in [x in ('wpsubdir','php7') for x in typelist]:
+            sitetype = 'wpsubdir'
+            if not cachelist:
+                cachetype = 'basic'
+            else:
+                cachetype = cachelist[0]
+        elif False not in [x in ('wpsubdomain','php7') for x in typelist]:
+            sitetype = 'wpsubdomain'
+            if not cachelist:
+                cachetype = 'basic'
+            else:
+                cachetype = cachelist[0]
         else:
             raise RuntimeError("could not determine site and cache type")
-
     else:
         if not typelist and not cachelist:
             sitetype = None
             cachetype = None
-        elif (not typelist) and cachelist:
+        elif (not typelist or "php7" in typelist) and cachelist:
             sitetype = 'wp'
             cachetype = cachelist[0]
         elif typelist and (not cachelist):
@@ -1049,6 +1202,7 @@ def detSitePar(opts):
         else:
             sitetype = typelist[0]
             cachetype = cachelist[0]
+
     return (sitetype, cachetype)
 
 
@@ -1147,43 +1301,6 @@ def doCleanupAction(self, domain='', webroot='', dbname='', dbuser='',
                 raise SiteError("dbhost not provided")
         deleteDB(self, dbname, dbuser, dbhost)
 
-
-def operateOnPagespeed(self, data):
-
-    ee_domain_name = data['site_name']
-    ee_site_webroot = data['webroot']
-
-    if data['pagespeed'] is True:
-        if not os.path.isfile("{0}/conf/nginx/pagespeed.conf.disabled"
-                              .format(ee_site_webroot)):
-            Log.debug(self, 'Writting the Pagespeed common '
-                      'configuration to file {0}/conf/nginx/pagespeed.conf'
-                      'pagespeed.conf'.format(ee_site_webroot))
-            ee_nginx = open('{0}/conf/nginx/pagespeed.conf'
-                            .format(ee_site_webroot), encoding='utf-8',
-                            mode='w')
-            self.app.render((data), 'pagespeed-common.mustache',
-                            out=ee_nginx)
-            ee_nginx.close()
-        else:
-            EEFileUtils.mvfile(self, "{0}/conf/nginx/pagespeed.conf.disabled"
-                               .format(ee_site_webroot),
-                               '{0}/conf/nginx/pagespeed.conf'
-                               .format(ee_site_webroot))
-
-    elif data['pagespeed'] is False:
-        if os.path.isfile("{0}/conf/nginx/pagespeed.conf"
-                          .format(ee_site_webroot)):
-            EEFileUtils.mvfile(self, "{0}/conf/nginx/pagespeed.conf"
-                               .format(ee_site_webroot),
-                               '{0}/conf/nginx/pagespeed.conf.disabled'
-                               .format(ee_site_webroot))
-
-    # Add nginx conf folder into GIT
-    EEGit.add(self, ["{0}/conf/nginx".format(ee_site_webroot)],
-              msg="Adding Pagespeed config of site: {0}"
-              .format(ee_domain_name))
-
 def cloneLetsEncrypt(self):
     letsencrypt_repo = "https://github.com/letsencrypt/letsencrypt"
     if not os.path.isdir("/opt"):
@@ -1235,8 +1352,7 @@ def setupLetsEncrypt(self, ee_domain_name):
             sslconf = open("/var/www/{0}/conf/nginx/ssl.conf"
                                       .format(ee_domain_name),
                                       encoding='utf-8', mode='w')
-            sslconf.write("listen 443 ssl {http2};\n".format(http2=("http2" if
-                                                           EEAptGet.is_installed(self,'nginx-mainline') else "spdy")) +
+            sslconf.write("listen 443 ssl http2;\n"
                                      "ssl on;\n"
                                      "ssl_certificate     /etc/letsencrypt/live/{0}/fullchain.pem;\n"
                                      "ssl_certificate_key     /etc/letsencrypt/live/{0}/privkey.pem;\n"
@@ -1274,7 +1390,7 @@ def renewLetsEncrypt(self, ee_domain_name):
 
     Log.info(self, "Renewing SSl cert for https://{0}".format(ee_domain_name))
 
-    ssl = EEShellExec.cmd_exec(self, "./letsencrypt-auto --renew certonly --webroot -w /var/www/{0}/htdocs/ -d {0} -d www.{0} "
+    ssl = EEShellExec.cmd_exec(self, "./letsencrypt-auto --renew-by-default certonly --webroot -w /var/www/{0}/htdocs/ -d {0} -d www.{0} "
                                 .format(ee_domain_name)
                                 + "--email {0} --text --agree-tos".format(ee_wp_email))
     mail_list = ''
@@ -1365,7 +1481,7 @@ def archivedCertificateHandle(self,domain,ee_wp_email):
 
     elif check_prompt == "3":
         Log.info(self,"Please Wait while we renew SSL Certificate for your site.\nIt may take time depending upon network.")
-        ssl = EEShellExec.cmd_exec(self, "./letsencrypt-auto --renew certonly --webroot -w /var/www/{0}/htdocs/ -d {0} -d www.{0} "
+        ssl = EEShellExec.cmd_exec(self, "./letsencrypt-auto --renew-by-default certonly --webroot -w /var/www/{0}/htdocs/ -d {0} -d www.{0} "
                                 .format(domain)
                                 + "--email {0} --text --agree-tos".format(ee_wp_email))
     else:
@@ -1380,7 +1496,3 @@ def archivedCertificateHandle(self,domain,ee_wp_email):
                              .format(domain))
 
     return ssl
-
-
-
-
